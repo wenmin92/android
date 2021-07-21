@@ -2,6 +2,8 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
+ * @author Juan Carlos Garrote Gascón
+ *
  * Copyright (C) 2020 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -23,7 +25,14 @@ import com.owncloud.android.presentation.viewmodels.authentication.OCAuthenticat
 import com.owncloud.android.presentation.viewmodels.capabilities.OCCapabilityViewModel
 import com.owncloud.android.presentation.viewmodels.drawer.DrawerViewModel
 import com.owncloud.android.presentation.viewmodels.oauth.OAuthViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsLogsViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsMoreViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsPictureUploadsViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsSecurityViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsVideoUploadsViewModel
+import com.owncloud.android.presentation.viewmodels.settings.SettingsViewModel
 import com.owncloud.android.presentation.viewmodels.sharing.OCShareViewModel
+import com.owncloud.android.ui.dialog.RemoveAccountDialogViewModel
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 
@@ -41,4 +50,11 @@ val viewModelModule = module {
 
     viewModel { OCAuthenticationViewModel(get(), get(), get(), get(), get(), get()) }
     viewModel { OAuthViewModel(get(), get(), get(), get()) }
+    viewModel { SettingsViewModel(get()) }
+    viewModel { SettingsSecurityViewModel(get()) }
+    viewModel { SettingsLogsViewModel(get(), get()) }
+    viewModel { SettingsMoreViewModel(get()) }
+    viewModel { SettingsPictureUploadsViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { SettingsVideoUploadsViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { RemoveAccountDialogViewModel(get(), get(), get(), get()) }
 }

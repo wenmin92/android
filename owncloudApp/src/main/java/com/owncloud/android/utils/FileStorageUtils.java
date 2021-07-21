@@ -5,6 +5,7 @@
  * @author David González Verdugo
  * @author Christian Schabesberger
  * @author Shashvat Kedia
+ * @author Juan Carlos Garrote Gascón
  * <p>
  * Copyright (C) 2020 ownCloud GmbH.
  * <p>
@@ -24,11 +25,11 @@
 package com.owncloud.android.utils;
 
 import android.annotation.SuppressLint;
-import android.net.Uri;
 import android.os.Environment;
 import android.webkit.MimeTypeMap;
 
 import com.owncloud.android.MainApp;
+import com.owncloud.android.data.LocalStorageProvider;
 import com.owncloud.android.datamodel.OCFile;
 import com.owncloud.android.lib.resources.files.RemoteFile;
 import timber.log.Timber;
@@ -49,14 +50,17 @@ public class FileStorageUtils {
     public static Integer mSortOrderFileDisp = SORT_NAME;
     public static Boolean mSortAscendingFileDisp = true;
 
+    // Let's use the LocalStorageProvider from now on.
+    // It is in the data module, and it will be beneficial for new architecture.
+    private static LocalStorageProvider getLocalStorageProvider() {
+        return new LocalStorageProvider(MainApp.Companion.getDataFolder());
+    }
+
     /**
      * Get local owncloud storage path for accountName.
      */
     public static String getSavePath(String accountName) {
-        File sdCard = Environment.getExternalStorageDirectory();
-        return sdCard.getAbsolutePath() + "/" + MainApp.Companion.getDataFolder() + "/" + Uri.encode(accountName, "@");
-        // URL encoding is an 'easy fix' to overcome that NTFS and FAT32 don't allow ":" in file names,
-        // that can be in the accountName since 0.1.190B
+        return getLocalStorageProvider().getSavePath(accountName);
     }
 
     /**
@@ -65,18 +69,14 @@ public class FileStorageUtils {
      * file.
      */
     public static String getDefaultSavePathFor(String accountName, OCFile file) {
-        return getSavePath(accountName) + file.getRemotePath();
+        return getLocalStorageProvider().getDefaultSavePathFor(accountName, file.getRemotePath());
     }
 
     /**
      * Get absolute path to tmp folder inside datafolder in sd-card for given accountName.
      */
     public static String getTemporalPath(String accountName) {
-        File sdCard = Environment.getExternalStorageDirectory();
-        return sdCard.getAbsolutePath() + "/" + MainApp.Companion.getDataFolder() + "/tmp/" + Uri.encode(accountName,
-                "@");
-        // URL encoding is an 'easy fix' to overcome that NTFS and FAT32 don't allow ":" in file names,
-        // that can be in the accountName since 0.1.190B
+        return getLocalStorageProvider().getTemporalPath(accountName);
     }
 
     /**
@@ -86,8 +86,7 @@ public class FileStorageUtils {
      */
     @SuppressLint("UsableSpace")
     public static long getUsableSpace() {
-        File savePath = Environment.getExternalStorageDirectory();
-        return savePath.getUsableSpace();
+        return getLocalStorageProvider().getUsableSpace();
     }
 
     public static String getParentPath(String remotePath) {
@@ -236,5 +235,9 @@ public class FileStorageUtils {
         }
 
         return dir.delete();
+    }
+
+    public static String getDefaultCameraSourcePath() {
+        return getLocalStorageProvider().getDefaultCameraSourcePath();
     }
 }
