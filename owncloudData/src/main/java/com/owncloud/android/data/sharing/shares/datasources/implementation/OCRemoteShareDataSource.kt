@@ -2,7 +2,9 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -19,15 +21,23 @@
 
 package com.owncloud.android.data.sharing.shares.datasources.implementation
 
+import com.owncloud.android.data.ClientManager
 import com.owncloud.android.data.executeRemoteOperation
 import com.owncloud.android.data.sharing.shares.datasources.RemoteShareDataSource
 import com.owncloud.android.data.sharing.shares.datasources.mapper.RemoteShareMapper
+import com.owncloud.android.domain.links.model.OCLink
+import com.owncloud.android.domain.links.model.OCLinkType
+import com.owncloud.android.domain.members.model.OCMember
+import com.owncloud.android.domain.members.model.OCMemberType
+import com.owncloud.android.domain.roles.model.OCRole
 import com.owncloud.android.domain.sharing.shares.model.OCShare
 import com.owncloud.android.domain.sharing.shares.model.ShareType
-import com.owncloud.android.lib.resources.shares.services.ShareService
+import com.owncloud.android.domain.sharing.shares.model.MemberPermission
+import com.owncloud.android.domain.sharing.shares.model.OCPermissions
+import com.owncloud.android.lib.resources.spaces.responses.PermissionsResponse
 
 class OCRemoteShareDataSource(
-    private val shareService: ShareService,
+    private val clientManager: ClientManager,
     private val remoteShareMapper: RemoteShareMapper
 ) : RemoteShareDataSource {
 
@@ -38,7 +48,7 @@ class OCRemoteShareDataSource(
         accountName: String
     ): List<OCShare> {
         executeRemoteOperation {
-            shareService.getShares(remoteFilePath, reshares, subfiles)
+            clientManager.getShareService(accountName).getShares(remoteFilePath, reshares, subfiles)
         }.let {
             return it.shares.map { remoteShare ->
                 remoteShareMapper.toModel(remoteShare)!!.apply {
@@ -48,7 +58,56 @@ class OCRemoteShareDataSource(
         }
     }
 
-    override fun insertShare(
+    override fun getGraphShares(
+        accountName: String,
+        spaceId: String,
+        itemId: String
+    ): OCPermissions {
+        val response = executeRemoteOperation {
+            clientManager.getShareService(accountName).getGraphShares(spaceId, itemId)
+        }
+        return response.toModel()
+    }
+
+    override fun addGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        member: OCMember,
+        roleId: String,
+        expirationDate: String?
+    ) {
+        val memberType = OCMemberType.toString(member.type).lowercase()
+        executeRemoteOperation {
+            clientManager.getShareService(accountName).addGraphShare(spaceId, itemId, member.id, memberType, roleId, expirationDate)
+        }
+    }
+
+    override fun removeGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String
+    ) {
+        executeRemoteOperation {
+            clientManager.getShareService(accountName).removeGraphShare(spaceId, itemId, shareId)
+        }
+    }
+
+    override fun editGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String,
+        roleId: String,
+        expirationDate: String?
+    ) {
+        executeRemoteOperation {
+            clientManager.getShareService(accountName).editGraphShare(spaceId, itemId, shareId, roleId, expirationDate)
+        }
+    }
+
+    override fun insert(
         remoteFilePath: String,
         shareType: ShareType,
         shareWith: String,
@@ -56,11 +115,10 @@ class OCRemoteShareDataSource(
         name: String,
         password: String,
         expirationDate: Long,
-        publicUpload: Boolean,
         accountName: String
     ): OCShare {
         executeRemoteOperation {
-            shareService.insertShare(
+            clientManager.getShareService(accountName).insertShare(
                 remoteFilePath,
                 com.owncloud.android.lib.resources.shares.ShareType.fromValue(shareType.value)!!,
                 shareWith,
@@ -68,7 +126,6 @@ class OCRemoteShareDataSource(
                 name,
                 password,
                 expirationDate,
-                publicUpload
             )
         }.let {
             return remoteShareMapper.toModel(it.shares.first())!!.apply {
@@ -83,17 +140,15 @@ class OCRemoteShareDataSource(
         password: String?,
         expirationDateInMillis: Long,
         permissions: Int,
-        publicUpload: Boolean,
         accountName: String
     ): OCShare {
         executeRemoteOperation {
-            shareService.updateShare(
+            clientManager.getShareService(accountName).updateShare(
                 remoteId,
                 name,
                 password,
                 expirationDateInMillis,
                 permissions,
-                publicUpload
             )
         }.let {
             return remoteShareMapper.toModel(it.shares.first())!!.apply {
@@ -102,9 +157,47 @@ class OCRemoteShareDataSource(
         }
     }
 
-    override fun deleteShare(remoteId: String) {
+    override fun deleteShare(remoteId: String, accountName: String) {
         executeRemoteOperation {
-            shareService.deleteShare(remoteId)
+            clientManager.getShareService(accountName).deleteShare(remoteId)
+        }
+    }
+
+    companion object {
+        fun PermissionsResponse.toModel(): OCPermissions {
+            val membersResponse = members.orEmpty()
+            return OCPermissions(
+                roles = roles.map { spaceRoleResponse ->
+                    OCRole(
+                        id = spaceRoleResponse.id,
+                        displayName = spaceRoleResponse.displayName,
+                        description = spaceRoleResponse.description
+                    )
+                },
+                members = membersResponse.filter { it.grantedToV2 != null }.map { spaceMemberResponse ->
+                    MemberPermission(
+                        id = spaceMemberResponse.id ?: "",
+                        memberId = spaceMemberResponse.grantedToV2?.user?.id
+                            ?: spaceMemberResponse.grantedToV2?.group?.id ?: "",
+                        expirationDateTime = spaceMemberResponse.expirationDateTime,
+                        displayName = spaceMemberResponse.grantedToV2?.user?.displayName
+                            ?: spaceMemberResponse.grantedToV2?.group?.displayName ?: "",
+                        roles = spaceMemberResponse.roles ?: emptyList(),
+                        isGroup = spaceMemberResponse.grantedToV2?.group != null
+                    )
+                },
+                links = membersResponse.filter { it.grantedToV2 == null }.map { spaceLinkResponse ->
+                    OCLink(
+                        id = spaceLinkResponse.id.orEmpty(),
+                        createdDateTime = spaceLinkResponse.createdDateTime.orEmpty(),
+                        expirationDateTime = spaceLinkResponse.expirationDateTime,
+                        hasPassword = spaceLinkResponse.hasPassword ?: false,
+                        displayName = spaceLinkResponse.link?.displayName.orEmpty(),
+                        type = OCLinkType.parseFromString(spaceLinkResponse.link?.type.orEmpty()),
+                        webUrl = spaceLinkResponse.link?.webUrl.orEmpty()
+                    )
+                }
+            )
         }
     }
 }

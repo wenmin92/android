@@ -2,7 +2,10 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Juan Carlos Garrote Gascón
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -20,8 +23,10 @@
 package com.owncloud.android.domain.sharing.shares
 
 import androidx.lifecycle.LiveData
+import com.owncloud.android.domain.members.model.OCMember
 import com.owncloud.android.domain.sharing.shares.model.OCShare
 import com.owncloud.android.domain.sharing.shares.model.ShareType
+import com.owncloud.android.domain.sharing.shares.model.OCPermissions
 
 interface ShareRepository {
 
@@ -53,7 +58,6 @@ interface ShareRepository {
         name: String,
         password: String,
         expirationTimeInMillis: Long,
-        publicUpload: Boolean,
         accountName: String
     )
 
@@ -63,7 +67,6 @@ interface ShareRepository {
         password: String?,
         expirationDateInMillis: Long,
         permissions: Int,
-        publicUpload: Boolean,
         accountName: String
     )
 
@@ -75,7 +78,38 @@ interface ShareRepository {
 
     fun getShareAsLiveData(remoteId: String): LiveData<OCShare>
 
+    fun getGraphShares(
+        accountName: String,
+        spaceId: String,
+        itemId: String
+    ): OCPermissions
+
+    fun addGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        member: OCMember,
+        roleId: String,
+        expirationDate: String?
+    )
+
+    fun removeGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String
+    )
+
+    fun editGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String,
+        roleId: String,
+        expirationDate: String?
+    )
+
     fun refreshSharesFromNetwork(filePath: String, accountName: String)
 
-    fun deleteShare(remoteId: String)
+    fun deleteShare(remoteId: String, accountName: String)
 }

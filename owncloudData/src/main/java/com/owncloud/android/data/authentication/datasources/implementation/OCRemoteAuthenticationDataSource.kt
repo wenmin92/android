@@ -2,7 +2,9 @@
  * ownCloud Android client application
  *
  * @author Abel García de Prada
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2025 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -27,7 +29,7 @@ import com.owncloud.android.lib.common.OwnCloudClient
 import com.owncloud.android.lib.common.OwnCloudClient.WEBDAV_FILES_PATH_4_0
 import com.owncloud.android.lib.common.authentication.OwnCloudCredentials
 import com.owncloud.android.lib.common.authentication.OwnCloudCredentialsFactory
-import com.owncloud.android.lib.resources.files.CheckPathExistenceRemoteOperation
+import com.owncloud.android.lib.resources.files.GetBaseUrlRemoteOperation
 import com.owncloud.android.lib.resources.users.GetRemoteUserInfoOperation
 
 class OCRemoteAuthenticationDataSource(
@@ -42,17 +44,16 @@ class OCRemoteAuthenticationDataSource(
     private fun login(ownCloudCredentials: OwnCloudCredentials, serverPath: String): Pair<UserInfo, String?> {
 
         val client: OwnCloudClient =
-            clientManager.getClientForUnExistingAccount(
+            clientManager.getClientForAnonymousCredentials(
                 path = serverPath,
                 requiresNewClient = false
             ).apply { credentials = ownCloudCredentials }
 
-        val checkPathExistenceRemoteOperation = CheckPathExistenceRemoteOperation("/", true)
-        executeRemoteOperation { checkPathExistenceRemoteOperation.execute(client) }
+        val getBaseUrlRemoteOperation = GetBaseUrlRemoteOperation()
+        val rawBaseUrl = executeRemoteOperation { getBaseUrlRemoteOperation.execute(client) }
 
-        val userBaseUri =
-            checkPathExistenceRemoteOperation.redirectionPath?.lastPermanentLocation?.trimEnd(*WEBDAV_FILES_PATH_4_0.toCharArray())
-                ?: client.baseUri.toString()
+        val userBaseUri = rawBaseUrl?.takeIf { !client.isKiteworksServer }?.replace(WEBDAV_FILES_PATH_4_0, "")
+            ?: client.baseUri.toString()
 
         // Get user info. It is needed to save the account into the account manager
         lateinit var userInfo: UserInfo
@@ -60,6 +61,10 @@ class OCRemoteAuthenticationDataSource(
         executeRemoteOperation {
             GetRemoteUserInfoOperation().execute(client)
         }.let { userInfo = it.toDomain() }
+
+        if (client.isKiteworksServer) {
+            userInfo = userInfo.copy(id = userInfo.displayName)
+        }
 
         return Pair(userInfo, userBaseUri)
     }

@@ -1,0 +1,141 @@
+schema: spec-driven
+
+authoring_notes:
+  - >-
+    Use the >- folded-scalar style for any guidance string longer than ~120 characters.
+    Plain scalars on a single long line trigger YAML parse warnings in some parsers;
+    >- folds multiple short lines into the same single-space-separated string at parse
+    time without changing the value.
+
+context: |
+  ## Product
+  ownCloud Android client — a file sync/sharing app targeting Android 9+ (Min SDK 28, Target/Compile SDK 36).
+
+  ## Tech Stack
+  - Language: Kotlin 2.3.10 (primary); some legacy Java in owncloudApp
+  - Build: Gradle 9.7.1, AGP 9.2.1, JDK 17, version catalog at gradle/libs.versions.toml
+  - DI: Koin (module-per-layer, wired in owncloudApp/.../dependecyinjection/)
+  - Networking: OkHttp + DAV4Android (WebDAV) + OAuth/OIDC + Moshi (owncloudComLibrary)
+  - Database: Room (owncloudData)
+  - Testing: JUnit, MockK, shared factories in owncloudTestUtil
+  - Static analysis: Detekt (zero-tolerance, maxIssues: 0), ktlint, EditorConfig (max line 150)
+
+  ## Architecture: MVVM + Clean Architecture
+  Strict four-module dependency chain:
+    owncloudComLibrary → owncloudData → owncloudDomain ← owncloudApp
+
+  - owncloudApp        — presentation: Activities, Fragments, ViewModels, Koin wiring
+  - owncloudDomain     — business: UseCases, domain Models, Repository interfaces, Exceptions
+  - owncloudData       — data: Repository implementations, Room DB, Remote/Local DataSources
+  - owncloudComLibrary — networking: OkHttp, DAV4Android, OAuth/OIDC, Moshi
+  - owncloudTestUtil   — shared test factories, mocks, extensions (test-only)
+
+  Data flows strictly in one direction:
+    Fragment → ViewModel → UseCase → Repository → DataSource → ownCloud server (WebDAV/Graph API)
+
+  UseCases extend BaseUseCase<R> or BaseUseCaseWithResult<P, R>.
+  ViewModels call UseCases via coroutines and expose Flow (preferred) or LiveData to the UI.
+
+  ## Product Flavors
+  Dimension: management — flavors: original (standard), mdm (MDM/branding), qa (automated testing).
+  Build types: debug / release. Example targets: assembleOriginalDebug, testMdmDebugUnitTest.
+
+  ## Development Conventions
+  - Every new file must end with a trailing blank line.
+
+  ## Changelog
+  Every PR requires a file in changelog/unreleased/<PR-number> with format:
+    Enhancement|Bugfix|Change|Security: Title under 80 chars
+    [blank line]
+    Description in present perfect passive tense.
+    [blank line]
+    https://github.com/owncloud/android/issues/<issue> (if related issue exists)
+    https://github.com/owncloud/android/pull/<pr>
+
+  ## Key Constraints
+  - Detekt is zero-tolerance — run ./gradlew detekt locally before any commit.
+  - No new dependencies without prior discussion in a GitHub issue.
+  - License migration in progress (GPL-2.0 → Apache 2.0): avoid new copyleft deps.
+  - No translation PRs — use Transifex.
+  - Security issues go to security.owncloud.com, not GitHub.
+
+rules:
+  proposal:
+    - Identify which module layer(s) are affected (owncloudApp / owncloudDomain / owncloudData / owncloudComLibrary).
+    - If the change crosses multiple layers, list each layer and the direction of change (e.g. new UseCase in domain + new DataSource in data).
+    - Capability paths should reflect the domain area (e.g. files/sharing, spaces, authentication) using snake-case.
+    - Keep under 400 words — implementation details belong in design.md.
+
+  specs:
+    - Use SHALL/MUST for normative requirements; avoid "should" or "may".
+    - Use Given/When/Then format for scenarios.
+    - Describe observable behavior (API contracts, UI state, data persistence), not internal class names or library choices.
+    - If the spec covers domain behavior (UseCases, Repository contracts), keep it free of Android framework APIs.
+
+  design:
+    - State which Koin modules need updating (UseCaseModule, RepositoryModule, RemoteDataSourceModule, etc.).
+    - Document the full data-flow path from Fragment/ViewModel down through UseCase and Repository to DataSource and back.
+    - Call out any Room schema changes (new entities, migrations) or WebDAV/Graph API changes explicitly.
+    - Note which product flavors (original / mdm / qa) are affected, if not all three.
+
+  tasks:
+    - Order implementation tasks following the module dependency chain — owncloudComLibrary first, then owncloudData, owncloudDomain, owncloudApp last.
+    - Add unit tests ONLY for Repository and DataSource implementations in owncloudData. Do not add unit tests to any other layer or module — not to UseCases in owncloudDomain, nor to owncloudApp, owncloudComLibrary, or owncloudTestUtil — since those test suites are currently unmaintained.
+    - Unit tests MUST live in their own dedicated task group, placed immediately before the changelog group.
+    - Only when the user explicitly requests release notes in the spec, include a release notes task placed after the unit tests group (if one exists) and immediately before the changelog group. Draft the user-facing release notes entry summarising the change for end users. If the spec does not call for release notes, do not add this task. Release notes live in the releaseNotesList inside the companion object of owncloudApp/src/main/java/com/owncloud/android/presentation/releasenotes/ReleaseNotesViewModel.kt — add a new ReleaseNote entry there (with its title/subtitle string resources), not in any other location.
+    - Verification task must only include static analysis and lint.
+    - Include a changelog task — create changelog/unreleased/XXXX (placeholder until PR number is known) following the project's changelog format.
+    - The changelog task and the verification task MUST always live in separate task groups — never combine them into a single group. The changelog group MUST be placed immediately before the verification group, which is always the last group. So the final groups are ordered as unit tests group (if any), then release notes task (if any), then changelog group, then verification group.
+    - If the implementation requires updating the context section above or CLAUDE.md, include a dedicated task for those documentation updates.
+    - Add a QA section at the end of tasks.md with a test plan table with columns — Test name, Steps to execute, Expected result, Result, Comments — covering positive, negative, and regression cases.
+    - Add a Gherkin scenario proposal in the QA section for adding to the E2E suite. It must appear under a heading named exactly "### Gherkin scenarios (E2E suite proposal)" and the scenario itself must be wrapped in a fenced code block (```gherkin ... ```), since the archive step only propagates the scenario when it finds that exact heading and fence. Every Scenario entry must include a 3–4 line free-text description between the scenario title and the first step keyword, stating the aim of the scenario, the key precondition that makes it distinct, and the expected outcome in plain English — do not simply restate the step text.
+    - Each implementation task should be completable in one focused session; split larger tasks if needed.
+
+operations:
+  apply:
+    guidance:
+      - When a subtask is finished, you must stop and ask the user for confirmation before continuing with the other tasks. Do not proceed to the next subtask until the user explicitly confirms.
+      - After implementing each module layer, run ./gradlew detekt on that module before moving to the next.
+      - Write unit tests in a dedicated task group, not scattered across implementation tasks.
+      - Keep changes focused and atomic — do not refactor unrelated code as part of the same implementation.
+      - Every new file must end with a trailing blank line.
+      - Only add code comments when the names of variables/methods or the logic are not self-explanatory. Never add comments just for the sake of it — if the code is already descriptive, leave it uncommented.
+      - Never mark the static analysis & build task (analysing and compiling the app — detekt / ktlint / lint / unit tests) as executed. Run it to validate locally, but leave its checkbox unchecked, since its result is not a committable change.
+  verify:
+    guidance:
+      - Cross-check the implementation against specs.md — every SHALL/MUST requirement must be traceable to a concrete code path or test.
+      - Cross-check the implementation against design.md — confirm the documented data-flow path (Fragment → ViewModel → UseCase → Repository → DataSource) is reflected in the actual code.
+      - Confirm all tasks in tasks.md are marked complete; flag any that were skipped or partially done.
+      - Run ./gradlew detekt on all affected modules and confirm zero issues.
+      - Run ./gradlew testDebugUnitTest testMdmDebugUnitTest --continue and confirm all unit tests pass.
+      - Confirm changelog/unreleased/<PR-number> exists, is correctly filled in, and follows the project format.
+  archive:
+    guidance:
+      - Verify changelog/unreleased/<PR-number> exists and is correctly filled in before archiving.
+      - Confirm ./gradlew detekt and ./gradlew testDebugUnitTest testMdmDebugUnitTest --continue all pass.
+      - >-
+        After the archive move completes, check whether tasks.md contains a Gherkin block
+        (the fenced code block under the heading "### Gherkin scenarios (E2E suite proposal)").
+        If no such block is found, skip silently. If one is found, perform these steps using the gh CLI.
+        (1) Derive the original change name as the basename of changeRoot — the directory name before
+        the date prefix was added (e.g. "create-public-link-sharing-ng").
+        (2) Get the SHA of the default branch of owncloud/android-scenario-testing with
+        "gh api repos/owncloud/android-scenario-testing/git/ref/heads/master --jq '.object.sha'".
+        (3) Create branch feature/<change-name> in that repo with
+        "gh api repos/owncloud/android-scenario-testing/git/refs --method POST
+        -f ref='refs/heads/feature/<change-name>' -f sha='<BASE_SHA>'".
+        (4) Build the source.md content as a fully formatted markdown document with this
+        exact structure: (a) top-level heading "# <change-name>"; (b) for each Scenario in
+        the Gherkin block, numbered subheading "## Scenario N: <scenario-title>" (N = 1, 2,
+        …); (c) the free-text description found between the Scenario title and the first
+        Given/When/Then/And/But keyword, emitted as a plain prose paragraph; (d) the
+        scenario steps (Given/When/Then/And/But lines only, without the Scenario title line)
+        wrapped in a fenced ```gherkin ... ``` code block. Separate every element with a
+        blank line. Repeat (b)–(d) for every Scenario found.
+        (5) Base64-encode the content and create the file at
+        openspec/changes/<change-name>/source.md on that branch with
+        "gh api repos/owncloud/android-scenario-testing/contents/openspec/changes/<change-name>/source.md
+        --method PUT -f message='feat: add E2E scenario source for <change-name>'
+        -f content='<BASE64>' -f branch='feature/<change-name>'".
+        If gh is unavailable or the branch already exists, report the error in the archive summary
+        but do not block the archive.

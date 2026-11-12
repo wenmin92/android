@@ -2,7 +2,9 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -19,8 +21,10 @@
 
 package com.owncloud.android.data.sharing.shares.datasources
 
+import com.owncloud.android.domain.members.model.OCMember
 import com.owncloud.android.domain.sharing.shares.model.OCShare
 import com.owncloud.android.domain.sharing.shares.model.ShareType
+import com.owncloud.android.domain.sharing.shares.model.OCPermissions
 import com.owncloud.android.lib.resources.shares.RemoteShare.Companion.INIT_EXPIRATION_DATE_IN_MILLIS
 
 interface RemoteShareDataSource {
@@ -31,7 +35,38 @@ interface RemoteShareDataSource {
         accountName: String
     ): List<OCShare>
 
-    fun insertShare(
+    fun getGraphShares(
+        accountName: String,
+        spaceId: String,
+        itemId: String
+    ): OCPermissions
+
+    fun addGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        member: OCMember,
+        roleId: String,
+        expirationDate: String?
+    )
+
+    fun removeGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String
+    )
+
+    fun editGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String,
+        roleId: String,
+        expirationDate: String?
+    )
+
+    fun insert(
         remoteFilePath: String,
         shareType: ShareType,
         shareWith: String,
@@ -39,7 +74,6 @@ interface RemoteShareDataSource {
         name: String = "",
         password: String = "",
         expirationDate: Long = INIT_EXPIRATION_DATE_IN_MILLIS,
-        publicUpload: Boolean = false,
         accountName: String
     ): OCShare
 
@@ -49,11 +83,11 @@ interface RemoteShareDataSource {
         password: String? = "",
         expirationDateInMillis: Long = INIT_EXPIRATION_DATE_IN_MILLIS,
         permissions: Int,
-        publicUpload: Boolean = false,
         accountName: String
     ): OCShare
 
     fun deleteShare(
-        remoteId: String
+        remoteId: String,
+        accountName: String,
     )
 }

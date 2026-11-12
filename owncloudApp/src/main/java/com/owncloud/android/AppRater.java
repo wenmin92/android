@@ -29,9 +29,9 @@ import timber.log.Timber;
 public class AppRater {
     private static final String DIALOG_RATE_ME_TAG = "DIALOG_RATE_ME";
 
-    private final static int DAYS_UNTIL_PROMPT = 2;
+    private final static int DAYS_UNTIL_PROMPT = 7;
     private final static int LAUNCHES_UNTIL_PROMPT = 2;
-    private final static int DAYS_UNTIL_NEUTRAL_CLICK = 1;
+    private final static int DAYS_UNTIL_NEUTRAL_CLICK = 7;
 
     public static final String APP_RATER_PREF_TITLE = "app_rater";
     public static final String APP_RATER_PREF_DONT_SHOW = "don't_show_again";
@@ -66,7 +66,7 @@ public class AppRater {
 
         /// Wait at least n days before opening
         if (launchCount >= LAUNCHES_UNTIL_PROMPT) {
-            Timber.d("The number of launchs already exceed " + LAUNCHES_UNTIL_PROMPT +
+            Timber.d("The number of launches already exceed " + LAUNCHES_UNTIL_PROMPT +
                     ", the default number of launches, so let's check some dates");
             Timber.d("Current moment is %s", System.currentTimeMillis());
             Timber.d("The date of the first launch + days until prompt is " + dateFirstLaunch +

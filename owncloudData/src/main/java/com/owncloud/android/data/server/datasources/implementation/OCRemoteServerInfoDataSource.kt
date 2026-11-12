@@ -2,7 +2,10 @@
  * ownCloud Android client application
  *
  * @author Abel García de Prada
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Juan Carlos Garrote Gascón
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2025 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -39,11 +42,11 @@ class OCRemoteServerInfoDataSource(
     // Basically, tries to access to the root folder without authorization and analyzes the response.
     fun getAuthenticationMethod(path: String): AuthenticationMethod {
         // Use the same client across the whole login process to keep cookies updated.
-        val owncloudClient = clientManager.getClientForUnExistingAccount(path, false)
+        val owncloudClient = clientManager.getClientForAnonymousCredentials(path, false)
 
-        // Step 1: check whether the root folder exists.
+        // Step 1: Check whether the root folder exists.
         val checkPathExistenceResult =
-            serverInfoService.checkPathExistence(path, isUserLogged = false, client = owncloudClient)
+            serverInfoService.checkPathExistence(path = path, isUserLoggedIn = false, client = owncloudClient)
 
         // Step 2: Check if server is available (If server is in maintenance for example, throw exception with specific message)
         if (checkPathExistenceResult.httpCode == HttpConstants.HTTP_SERVICE_UNAVAILABLE) {
@@ -66,13 +69,15 @@ class OCRemoteServerInfoDataSource(
             if (isBasic) {
                 authenticationMethod = AuthenticationMethod.BASIC_HTTP_AUTH
             }
+        } else if (owncloudClient.isKiteworksServer) {
+            authenticationMethod = AuthenticationMethod.BEARER_TOKEN
         }
 
         return authenticationMethod
     }
 
     fun getRemoteStatus(path: String): RemoteServerInfo {
-        val ownCloudClient = clientManager.getClientForUnExistingAccount(path, true)
+        val ownCloudClient = clientManager.getClientForAnonymousCredentials(path, true)
 
         val remoteStatusResult = serverInfoService.getRemoteStatus(path, ownCloudClient)
 
@@ -87,20 +92,27 @@ class OCRemoteServerInfoDataSource(
         return remoteServerInfo
     }
 
-    override fun getServerInfo(path: String): ServerInfo {
+    override fun getServerInfo(path: String, enforceOIDC: Boolean): ServerInfo {
         // First step: check the status of the server (including its version)
         val remoteServerInfo = getRemoteStatus(path)
         val normalizedProtocolPrefix =
             normalizeProtocolPrefix(remoteServerInfo.baseUrl, remoteServerInfo.isSecureConnection)
 
         // Second step: get authentication method required by the server
-        val authenticationMethod = getAuthenticationMethod(normalizedProtocolPrefix)
+        val authenticationMethod =
+            if (enforceOIDC) AuthenticationMethod.BEARER_TOKEN
+            else getAuthenticationMethod(normalizedProtocolPrefix)
 
-        return ServerInfo(
-            ownCloudVersion = remoteServerInfo.ownCloudVersion.version,
-            baseUrl = normalizedProtocolPrefix,
-            authenticationMethod = authenticationMethod,
-            isSecureConnection = remoteServerInfo.isSecureConnection
-        )
+        return if (authenticationMethod == AuthenticationMethod.BEARER_TOKEN) {
+            ServerInfo.OAuth2Server(
+                ownCloudVersion = remoteServerInfo.ownCloudVersion.version,
+                baseUrl = normalizedProtocolPrefix
+            )
+        } else {
+            ServerInfo.BasicServer(
+                ownCloudVersion = remoteServerInfo.ownCloudVersion.version,
+                baseUrl = normalizedProtocolPrefix,
+            )
+        }
     }
 }

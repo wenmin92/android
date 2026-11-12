@@ -2,7 +2,9 @@
  * ownCloud Android client application
  *
  * @author Abel García de Prada
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2025 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -42,12 +44,27 @@ class OCRemoteUserDataSource(
     override fun getUserQuota(accountName: String): UserQuota =
         executeRemoteOperation {
             clientManager.getUserService(accountName).getUserQuota()
-        }.toDomain()
+        }.toDomain(accountName)
 
     override fun getUserAvatar(accountName: String): UserAvatar =
         executeRemoteOperation {
             clientManager.getUserService(accountName = accountName).getUserAvatar(avatarDimension)
         }.toDomain()
+
+    override fun getUserId(accountName: String): String =
+        executeRemoteOperation {
+            clientManager.getUserService(accountName).getUserId()
+        }
+
+    override fun getUserPermissions(accountName: String, accountId: String): List<String> =
+        executeRemoteOperation {
+            clientManager.getUserService(accountName).getUserPermissions(accountId)
+        }
+
+    override fun getUserGroups(accountName: String): List<String> =
+        executeRemoteOperation {
+            clientManager.getUserService(accountName).getUserGroups()
+        }
 
 }
 
@@ -68,8 +85,11 @@ private fun RemoteAvatarData.toDomain(): UserAvatar =
         mimeType = this.mimeType
     )
 
-private fun GetRemoteUserQuotaOperation.RemoteQuota.toDomain(): UserQuota =
+private fun GetRemoteUserQuotaOperation.RemoteQuota.toDomain(accountName: String): UserQuota =
     UserQuota(
+        accountName = accountName,
         available = this.free,
-        used = this.used
+        used = this.used,
+        total = this.total,
+        state = null
     )

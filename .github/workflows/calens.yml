@@ -1,26 +1,19 @@
 name: Calens Changelog
-# This workflow is triggered on pushes to the repository.
+
 on:
   push:
     branches:
-    - fix/*
-    - feature/*
-    - release/*
+      - master
+      - 'release/**'
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-18.04
-    name: Generate Calens Changelog
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run Calens Docker
-        uses: addnab/docker-run-action@v3
-        with:
-          options: -v ${{github.workspace}}:/workspace -w /workspace
-          image: toolhippie/calens:latest
-          run: calens >| CHANGELOG.md
-      - name: Commit files
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: Calens changelog updated
-          file_pattern: CHANGELOG.md
+  changelog:
+    uses: owncloud/reusable-workflows/.github/workflows/calens.yml@main
+    with:
+      branch: ${{ github.ref_name }}
+    secrets:
+      APP_ID: ${{ secrets.CALENS_APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.CALENS_APP_PRIVATE_KEY }}

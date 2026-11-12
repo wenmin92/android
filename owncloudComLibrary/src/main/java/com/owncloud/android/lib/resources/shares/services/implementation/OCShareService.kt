@@ -1,0 +1,124 @@
+/* ownCloud Android Library is available under MIT license
+ *   Copyright (C) 2022 ownCloud GmbH.
+ *
+ *   @author David González Verdugo
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a copy
+ *   of this software and associated documentation files (the "Software"), to deal
+ *   in the Software without restriction, including without limitation the rights
+ *   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *   copies of the Software, and to permit persons to whom the Software is
+ *   furnished to do so, subject to the following conditions:
+ *
+ *   The above copyright notice and this permission notice shall be included in
+ *   all copies or substantial portions of the Software.
+ *
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ *   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ *   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ *   BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ *   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ *   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ *   THE SOFTWARE.
+ *
+ */
+
+package com.owncloud.android.lib.resources.shares.services.implementation
+
+import com.owncloud.android.lib.common.OwnCloudClient
+import com.owncloud.android.lib.common.operations.RemoteOperationResult
+import com.owncloud.android.lib.resources.shares.AddRemoteGraphShareOperation
+import com.owncloud.android.lib.resources.shares.CreateRemoteOcsShareOperation
+import com.owncloud.android.lib.resources.shares.EditRemoteGraphShareOperation
+import com.owncloud.android.lib.resources.shares.GetRemoteGraphSharesForFileOperation
+import com.owncloud.android.lib.resources.shares.GetRemoteOcsSharesForFileOperation
+import com.owncloud.android.lib.resources.shares.RemoveRemoteGraphShareOperation
+import com.owncloud.android.lib.resources.shares.RemoveRemoteOcsShareOperation
+import com.owncloud.android.lib.resources.shares.ShareResponse
+import com.owncloud.android.lib.resources.shares.ShareType
+import com.owncloud.android.lib.resources.shares.UpdateRemoteOcsShareOperation
+import com.owncloud.android.lib.resources.shares.services.ShareService
+import com.owncloud.android.lib.resources.spaces.responses.PermissionsResponse
+
+class OCShareService(override val client: OwnCloudClient) : ShareService {
+    override fun getShares(
+        remoteFilePath: String,
+        reshares: Boolean,
+        subfiles: Boolean
+    ): RemoteOperationResult<ShareResponse> = GetRemoteOcsSharesForFileOperation(
+        remoteFilePath,
+        reshares,
+        subfiles
+    ).execute(client)
+
+    override fun getGraphShares(spaceId: String, itemId: String): RemoteOperationResult<PermissionsResponse> =
+        GetRemoteGraphSharesForFileOperation(spaceId, itemId).execute(client)
+
+    override fun addGraphShare(
+        spaceId: String,
+        itemId: String,
+        memberId: String,
+        memberType: String,
+        roleId: String,
+        expirationDate: String?
+    ): RemoteOperationResult<Unit> =
+        AddRemoteGraphShareOperation(spaceId, itemId, memberId, memberType, roleId, expirationDate).execute(client)
+
+    override fun removeGraphShare(
+        spaceId: String,
+        itemId: String,
+        shareId: String
+    ): RemoteOperationResult<Unit> =
+        RemoveRemoteGraphShareOperation(spaceId, itemId, shareId).execute(client)
+
+    override fun editGraphShare(
+        spaceId: String,
+        itemId: String,
+        shareId: String,
+        roleId: String,
+        expirationDate: String?
+    ): RemoteOperationResult<Unit> =
+        EditRemoteGraphShareOperation(spaceId, itemId, shareId, roleId, expirationDate).execute(client)
+
+    override fun insertShare(
+        remoteFilePath: String,
+        shareType: ShareType,
+        shareWith: String,
+        permissions: Int,
+        name: String,
+        password: String,
+        expirationDate: Long,
+    ): RemoteOperationResult<ShareResponse> =
+        CreateRemoteOcsShareOperation(
+            remoteFilePath,
+            shareType,
+            shareWith,
+            permissions
+        ).apply {
+            this.name = name
+            this.password = password
+            this.expirationDateInMillis = expirationDate
+        }.execute(client)
+
+    override fun updateShare(
+        remoteId: String,
+        name: String,
+        password: String?,
+        expirationDate: Long,
+        permissions: Int,
+    ): RemoteOperationResult<ShareResponse> =
+        UpdateRemoteOcsShareOperation(
+            remoteId
+        ).apply {
+            this.name = name
+            this.password = password
+            this.expirationDateInMillis = expirationDate
+            this.permissions = permissions
+        }.execute(client)
+
+    override fun deleteShare(remoteId: String): RemoteOperationResult<Unit> =
+        RemoveRemoteOcsShareOperation(
+            remoteId
+        ).execute(client)
+}

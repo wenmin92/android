@@ -2,7 +2,10 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Juan Carlos Garrote Gascón
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -22,9 +25,11 @@ package com.owncloud.android.data.sharing.shares.repository
 import androidx.lifecycle.LiveData
 import com.owncloud.android.data.sharing.shares.datasources.LocalShareDataSource
 import com.owncloud.android.data.sharing.shares.datasources.RemoteShareDataSource
+import com.owncloud.android.domain.members.model.OCMember
 import com.owncloud.android.domain.sharing.shares.ShareRepository
 import com.owncloud.android.domain.sharing.shares.model.OCShare
 import com.owncloud.android.domain.sharing.shares.model.ShareType
+import com.owncloud.android.domain.sharing.shares.model.OCPermissions
 import com.owncloud.android.lib.resources.shares.RemoteShare
 
 class OCShareRepository(
@@ -52,13 +57,12 @@ class OCShareRepository(
         )
     }
 
-    override fun updatePrivateShare(remoteId: String, permissions: Int, accountName: String) {
-        return updateShare(
+    override fun updatePrivateShare(remoteId: String, permissions: Int, accountName: String) =
+        updateShare(
             remoteId = remoteId,
             permissions = permissions,
             accountName = accountName
         )
-    }
 
     /******************************************************************************************************
      ******************************************* PUBLIC SHARES ********************************************
@@ -70,7 +74,6 @@ class OCShareRepository(
         name: String,
         password: String,
         expirationTimeInMillis: Long,
-        publicUpload: Boolean,
         accountName: String
     ) {
         insertShare(
@@ -80,7 +83,6 @@ class OCShareRepository(
             name = name,
             password = password,
             expirationTimeInMillis = expirationTimeInMillis,
-            publicUpload = publicUpload,
             accountName = accountName
         )
     }
@@ -91,31 +93,23 @@ class OCShareRepository(
         password: String?,
         expirationDateInMillis: Long,
         permissions: Int,
-        publicUpload: Boolean,
         accountName: String
-    ) {
-        return updateShare(
+    ) =
+        updateShare(
             remoteId,
             permissions,
             name,
             password,
             expirationDateInMillis,
-            publicUpload,
             accountName
         )
-    }
-
-    override fun deleteShare(remoteId: String) {
-        remoteShareDataSource.deleteShare(remoteId)
-        localShareDataSource.deleteShare(remoteId)
-    }
 
     /******************************************************************************************************
      *********************************************** COMMON ***********************************************
      ******************************************************************************************************/
 
-    override fun getSharesAsLiveData(filePath: String, accountName: String): LiveData<List<OCShare>> {
-        return localShareDataSource.getSharesAsLiveData(
+    override fun getSharesAsLiveData(filePath: String, accountName: String): LiveData<List<OCShare>> =
+        localShareDataSource.getSharesAsLiveData(
             filePath, accountName, listOf(
                 ShareType.PUBLIC_LINK,
                 ShareType.USER,
@@ -123,10 +117,37 @@ class OCShareRepository(
                 ShareType.FEDERATED
             )
         )
-    }
 
     override fun getShareAsLiveData(remoteId: String): LiveData<OCShare> =
         localShareDataSource.getShareAsLiveData(remoteId)
+
+    override fun getGraphShares(accountName: String, spaceId: String, itemId: String): OCPermissions =
+        remoteShareDataSource.getGraphShares(accountName, spaceId, itemId)
+
+    override fun addGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        member: OCMember,
+        roleId: String,
+        expirationDate: String?
+    ) = remoteShareDataSource.addGraphShare(accountName, spaceId, itemId, member, roleId, expirationDate)
+
+    override fun removeGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String
+    ) = remoteShareDataSource.removeGraphShare(accountName, spaceId, itemId, shareId)
+
+    override fun editGraphShare(
+        accountName: String,
+        spaceId: String,
+        itemId: String,
+        shareId: String,
+        roleId: String,
+        expirationDate: String?
+    ) = remoteShareDataSource.editGraphShare(accountName, spaceId, itemId, shareId, roleId, expirationDate)
 
     override fun refreshSharesFromNetwork(
         filePath: String,
@@ -146,6 +167,11 @@ class OCShareRepository(
         }
     }
 
+    override fun deleteShare(remoteId: String, accountName: String) {
+        remoteShareDataSource.deleteShare(remoteId, accountName)
+        localShareDataSource.deleteShare(remoteId)
+    }
+
     private fun insertShare(
         filePath: String,
         shareType: ShareType,
@@ -154,10 +180,9 @@ class OCShareRepository(
         name: String = "",
         password: String = "",
         expirationTimeInMillis: Long = RemoteShare.INIT_EXPIRATION_DATE_IN_MILLIS,
-        publicUpload: Boolean = false,
         accountName: String
     ) {
-        remoteShareDataSource.insertShare(
+        remoteShareDataSource.insert(
             filePath,
             shareType,
             shareWith,
@@ -165,7 +190,6 @@ class OCShareRepository(
             name,
             password,
             expirationTimeInMillis,
-            publicUpload,
             accountName
         ).also { remotelyInsertedShare ->
             localShareDataSource.insert(remotelyInsertedShare)
@@ -178,7 +202,6 @@ class OCShareRepository(
         name: String = "",
         password: String? = "",
         expirationDateInMillis: Long = RemoteShare.INIT_EXPIRATION_DATE_IN_MILLIS,
-        publicUpload: Boolean = false,
         accountName: String
     ) {
         remoteShareDataSource.updateShare(
@@ -187,7 +210,6 @@ class OCShareRepository(
             password,
             expirationDateInMillis,
             permissions,
-            publicUpload,
             accountName
         ).also { remotelyUpdatedShare ->
             localShareDataSource.update(remotelyUpdatedShare)

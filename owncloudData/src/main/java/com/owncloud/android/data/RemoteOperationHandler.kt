@@ -2,7 +2,10 @@
  * ownCloud Android client application
  *
  * @author David González Verdugo
- * Copyright (C) 2020 ownCloud GmbH.
+ * @author Juan Carlos Garrote Gascón
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2,
@@ -26,6 +29,8 @@ import com.owncloud.android.domain.exceptions.AccountNotTheSameException
 import com.owncloud.android.domain.exceptions.BadOcVersionException
 import com.owncloud.android.domain.exceptions.CancelledException
 import com.owncloud.android.domain.exceptions.ConflictException
+import com.owncloud.android.domain.exceptions.ConflictMemberException
+import com.owncloud.android.domain.exceptions.ConflictShareException
 import com.owncloud.android.domain.exceptions.CopyIntoDescendantException
 import com.owncloud.android.domain.exceptions.DelayedForWifiException
 import com.owncloud.android.domain.exceptions.FileNotFoundException
@@ -42,14 +47,18 @@ import com.owncloud.android.domain.exceptions.LocalStorageNotCopiedException
 import com.owncloud.android.domain.exceptions.LocalStorageNotMovedException
 import com.owncloud.android.domain.exceptions.LocalStorageNotRemovedException
 import com.owncloud.android.domain.exceptions.MoveIntoDescendantException
+import com.owncloud.android.domain.exceptions.NetworkErrorException
 import com.owncloud.android.domain.exceptions.NoConnectionWithServerException
 import com.owncloud.android.domain.exceptions.NoNetworkConnectionException
 import com.owncloud.android.domain.exceptions.OAuth2ErrorAccessDeniedException
 import com.owncloud.android.domain.exceptions.OAuth2ErrorException
 import com.owncloud.android.domain.exceptions.PartialCopyDoneException
 import com.owncloud.android.domain.exceptions.PartialMoveDoneException
+import com.owncloud.android.domain.exceptions.PasswordEnforcedException
+import com.owncloud.android.domain.exceptions.PayloadTooLongException
 import com.owncloud.android.domain.exceptions.QuotaExceededException
 import com.owncloud.android.domain.exceptions.RedirectToNonSecureException
+import com.owncloud.android.domain.exceptions.ResourceLockedException
 import com.owncloud.android.domain.exceptions.SSLErrorException
 import com.owncloud.android.domain.exceptions.ServerConnectionTimeoutException
 import com.owncloud.android.domain.exceptions.ServerNotReachableException
@@ -63,6 +72,7 @@ import com.owncloud.android.domain.exceptions.SpecificMethodNotAllowedException
 import com.owncloud.android.domain.exceptions.SpecificServiceUnavailableException
 import com.owncloud.android.domain.exceptions.SpecificUnsupportedMediaTypeException
 import com.owncloud.android.domain.exceptions.SyncConflictException
+import com.owncloud.android.domain.exceptions.TooEarlyException
 import com.owncloud.android.domain.exceptions.UnauthorizedException
 import com.owncloud.android.domain.exceptions.UnhandledHttpCodeException
 import com.owncloud.android.domain.exceptions.UnknownErrorException
@@ -87,10 +97,9 @@ private fun <T> handleRemoteOperationResult(
     when (remoteOperationResult.code) {
         RemoteOperationResult.ResultCode.WRONG_CONNECTION -> throw NoConnectionWithServerException()
         RemoteOperationResult.ResultCode.NO_NETWORK_CONNECTION -> throw NoNetworkConnectionException()
-        RemoteOperationResult.ResultCode.TIMEOUT -> {
+        RemoteOperationResult.ResultCode.TIMEOUT ->
             if (remoteOperationResult.exception is SocketTimeoutException) throw ServerResponseTimeoutException()
             else throw ServerConnectionTimeoutException()
-        }
         RemoteOperationResult.ResultCode.HOST_NOT_AVAILABLE -> throw ServerNotReachableException()
         RemoteOperationResult.ResultCode.SERVICE_UNAVAILABLE -> throw ServiceUnavailableException()
         RemoteOperationResult.ResultCode.SSL_RECOVERABLE_PEER_UNVERIFIED -> throw remoteOperationResult.exception as CertificateCombinedException
@@ -111,6 +120,8 @@ private fun <T> handleRemoteOperationResult(
         RemoteOperationResult.ResultCode.INVALID_LOCAL_FILE_NAME -> throw InvalidLocalFileNameException()
         RemoteOperationResult.ResultCode.INVALID_OVERWRITE -> throw InvalidOverwriteException()
         RemoteOperationResult.ResultCode.CONFLICT -> throw ConflictException()
+        RemoteOperationResult.ResultCode.CONFLICT_MEMBER -> throw ConflictMemberException()
+        RemoteOperationResult.ResultCode.CONFLICT_SHARE -> throw ConflictShareException()
         RemoteOperationResult.ResultCode.SYNC_CONFLICT -> throw SyncConflictException()
         RemoteOperationResult.ResultCode.LOCAL_STORAGE_FULL -> throw LocalStorageFullException()
         RemoteOperationResult.ResultCode.LOCAL_STORAGE_NOT_MOVED -> throw LocalStorageNotMovedException()
@@ -133,9 +144,14 @@ private fun <T> handleRemoteOperationResult(
         RemoteOperationResult.ResultCode.LOCAL_FILE_NOT_FOUND -> throw LocalFileNotFoundException()
         RemoteOperationResult.ResultCode.SPECIFIC_SERVICE_UNAVAILABLE -> throw SpecificServiceUnavailableException(remoteOperationResult.httpPhrase)
         RemoteOperationResult.ResultCode.SPECIFIC_UNSUPPORTED_MEDIA_TYPE -> throw SpecificUnsupportedMediaTypeException()
-        RemoteOperationResult.ResultCode.SPECIFIC_METHOD_NOT_ALLOWED -> throw SpecificMethodNotAllowedException()
+        RemoteOperationResult.ResultCode.SPECIFIC_METHOD_NOT_ALLOWED -> throw SpecificMethodNotAllowedException(remoteOperationResult.httpPhrase)
         RemoteOperationResult.ResultCode.SHARE_NOT_FOUND -> throw ShareNotFoundException(remoteOperationResult.httpPhrase)
         RemoteOperationResult.ResultCode.SHARE_FORBIDDEN -> throw ShareForbiddenException(remoteOperationResult.httpPhrase)
-        else -> throw Exception()
+        RemoteOperationResult.ResultCode.TOO_EARLY -> throw TooEarlyException()
+        RemoteOperationResult.ResultCode.NETWORK_ERROR -> throw NetworkErrorException()
+        RemoteOperationResult.ResultCode.RESOURCE_LOCKED -> throw ResourceLockedException()
+        RemoteOperationResult.ResultCode.PAYLOAD_TOO_LONG -> throw PayloadTooLongException()
+        RemoteOperationResult.ResultCode.PASSWORD_ENFORCED -> throw PasswordEnforcedException()
+        else -> throw Exception("An unknown error has occurred")
     }
 }

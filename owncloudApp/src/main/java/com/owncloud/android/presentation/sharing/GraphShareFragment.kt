@@ -1,0 +1,414 @@
+/**
+ * ownCloud Android client application
+ *
+ * @author Jorge Aguado Recio
+ *
+ * Copyright (C) 2026 ownCloud GmbH.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2,
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package com.owncloud.android.presentation.sharing
+
+import android.app.AlertDialog
+import android.content.Context
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.isVisible
+import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.owncloud.android.R
+import com.owncloud.android.databinding.MembersFragmentBinding
+import com.owncloud.android.domain.files.model.OCFile
+import com.owncloud.android.domain.links.model.OCLink
+import com.owncloud.android.domain.roles.model.OCRole
+import com.owncloud.android.domain.sharing.shares.model.MemberPermission
+import com.owncloud.android.extensions.avoidScreenshotsIfNeeded
+import com.owncloud.android.extensions.collectLatestLifecycleFlow
+import com.owncloud.android.extensions.showErrorInSnackbar
+import com.owncloud.android.extensions.showMessageInSnackbar
+import com.owncloud.android.presentation.common.UIResult
+import com.owncloud.android.presentation.links.PublicLinksAdapter
+import com.owncloud.android.presentation.links.PublicLinksViewModel
+import com.owncloud.android.utils.DisplayUtils
+import org.koin.androidx.viewmodel.ext.android.activityViewModel
+import org.koin.core.parameter.parametersOf
+import timber.log.Timber
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+class GraphShareFragment : Fragment(), GraphSharesAdapter.GraphSharesAdapterListener, PublicLinksAdapter.PublicLinksAdapterListener {
+    private var _binding: MembersFragmentBinding? = null
+    private val binding get() = _binding!!
+
+    private val graphShareViewModel by activityViewModel<GraphShareViewModel> {
+        parametersOf(
+            requireArguments().getString(ARG_ACCOUNT_NAME),
+            requireArguments().getParcelable<OCFile>(ARG_FILE)
+        )
+    }
+
+    private val publicLinksViewModel by activityViewModel<PublicLinksViewModel> {
+        val file = requireArguments().getParcelable<OCFile>(ARG_FILE)
+        parametersOf(
+            requireArguments().getString(ARG_ACCOUNT_NAME),
+            file?.spaceId,
+            file?.remoteId
+        )
+    }
+
+    private lateinit var graphSharesAdapter: GraphSharesAdapter
+    private lateinit var graphLinksAdapter: PublicLinksAdapter
+
+    private var roles: List<OCRole> = emptyList()
+    private var shares: List<MemberPermission> = emptyList()
+    private var links: List<OCLink> = emptyList()
+    private var listener: GraphShareFragmentListener? = null
+    private var canRemoveSharesAndLinks: Boolean = false
+    private var canEditSharesAndLinks: Boolean = false
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = MembersFragmentBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        requireActivity().title = getString(R.string.share_dialog_title)
+        binding.membersTitle.text = getString(R.string.share_with_people_title)
+
+        graphSharesAdapter = GraphSharesAdapter(this)
+        binding.membersRecyclerView.apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = graphSharesAdapter
+        }
+
+        graphLinksAdapter = PublicLinksAdapter(this)
+        binding.publicLinksRecyclerView.apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = graphLinksAdapter
+        }
+
+        binding.swipeRefreshMembers.setOnRefreshListener {
+            graphShareViewModel.getSpacePermissions()
+            graphShareViewModel.getGraphShares()
+        }
+
+        val file = requireArguments().getParcelable<OCFile>(ARG_FILE)
+        val accountName = requireArguments().getString(ARG_ACCOUNT_NAME)
+        binding.publicLinksWarning.text = getString(
+            if (file?.isFolder == true) {
+                R.string.share_warning_about_forwarding_folder_public_links
+            } else {
+                R.string.share_warning_about_forwarding_file_public_links
+            }
+        )
+        binding.addMemberButton.contentDescription = getString(R.string.content_description_add_share)
+        binding.addMemberButton.setOnClickListener {
+            if (file != null && accountName != null) {
+                graphShareViewModel.resetViewModel()
+                listener?.addGraphShare(file = file, accountName = accountName, roles = roles, editMode = false, selectedShare = null)
+            }
+        }
+
+        binding.addPublicLinkButton.setOnClickListener {
+            if (file != null && accountName != null) {
+                publicLinksViewModel.resetViewModel()
+                listener?.addPublicLink(file = file, accountName = accountName, editMode = false, selectedPublicLink = null)
+            }
+        }
+
+        subscribeToViewModels()
+    }
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        try {
+            listener = context as GraphShareFragmentListener?
+        } catch (e: ClassCastException) {
+            Timber.e(e, "The activity attached does not implement GraphShareFragmentListener")
+            throw ClassCastException(activity.toString() + " must implement GraphShareFragmentListener")
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    override fun onRemoveShare(share: MemberPermission) {
+        AlertDialog.Builder(requireContext())
+            .setIcon(R.drawable.ic_warning)
+            .setTitle(getString(R.string.share_remove))
+            .setMessage(getString(R.string.confirmation_remove_share_message, share.displayName))
+            .setPositiveButton(getString(R.string.common_yes)) { _, _ -> graphShareViewModel.removeGraphShare(share.id) }
+            .setNegativeButton(getString(R.string.common_no)) { dialog, _ -> dialog.dismiss() }
+            .show()
+            .avoidScreenshotsIfNeeded()
+    }
+
+    override fun onEditShare(share: MemberPermission) {
+        val file = requireArguments().getParcelable<OCFile>(ARG_FILE)
+        val accountName = requireArguments().getString(ARG_ACCOUNT_NAME)
+        if (file != null && accountName != null) {
+            graphShareViewModel.resetViewModel()
+            listener?.addGraphShare(file = file, accountName = accountName, roles = roles, editMode = true, selectedShare = share)
+        }
+    }
+
+    private fun subscribeToViewModels() {
+        observeShares()
+        observeSpacePermissions()
+        observeAddShareResult()
+        observeRemoveShareResult()
+        observeEditShareResult()
+        observeAddLinkResult()
+        observeEditLinkResult()
+        observeRemoveLinkResult()
+    }
+
+    private fun observeShares() {
+        collectLatestLifecycleFlow(graphShareViewModel.shares) { event ->
+            event?.let {
+                when (val uiResult = event.peekContent()) {
+                    is UIResult.Success -> {
+                        uiResult.data?.let {
+                            roles = it.roles
+                            shares = it.members
+                            links = it.links
+                            showShares()
+                            showLinks()
+                            binding.swipeRefreshMembers.isRefreshing = false
+                        }
+                    }
+                    is UIResult.Loading -> { binding.swipeRefreshMembers.isRefreshing = true }
+                    is UIResult.Error -> {
+                        binding.swipeRefreshMembers.isRefreshing = false
+                        showErrorInSnackbar(R.string.share_sync_failed, uiResult.error)
+                        Timber.e(uiResult.error, "Failed to retrieve shares")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observeSpacePermissions() {
+        collectLatestLifecycleFlow(graphShareViewModel.spacePermissions) { event ->
+            event?.let {
+                when (val uiResult = event.peekContent()) {
+                    is UIResult.Success -> {
+                        uiResult.data?.let { spacePermissions ->
+                            checkPermissions(spacePermissions)
+                            showShares()
+                            showLinks()
+                        }
+                    }
+                    is UIResult.Loading -> { }
+                    is UIResult.Error -> {
+                        Timber.e(uiResult.error, "Failed to retrieve space permissions")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkPermissions(spacePermissions: List<String>) {
+        canRemoveSharesAndLinks = DRIVES_DELETE_PERMISSION in spacePermissions
+        canEditSharesAndLinks = DRIVES_UPDATE_PERMISSION in spacePermissions
+        val hasCreatePermission = DRIVES_CREATE_PERMISSION in spacePermissions
+        binding.addMemberButton.isVisible = hasCreatePermission
+        binding.addPublicLinkButton.isVisible = hasCreatePermission
+    }
+
+    private fun observeAddShareResult() {
+        collectLatestLifecycleFlow(graphShareViewModel.addShareResultFlow) { event ->
+            event?.peekContent()?.let { uiResult ->
+                when (uiResult) {
+                    is UIResult.Loading -> { }
+                    is UIResult.Success -> {
+                        showMessageInSnackbar(getString(R.string.share_add_correctly))
+                        graphShareViewModel.getGraphShares()
+                        graphShareViewModel.resetViewModel()
+                    }
+                    is UIResult.Error -> { }
+                }
+            }
+        }
+    }
+
+    private fun observeAddLinkResult() {
+        collectLatestLifecycleFlow(publicLinksViewModel.addLinkResultFlow) { event ->
+            event?.peekContent()?.let { uiResult ->
+                when (uiResult) {
+                    is UIResult.Loading -> { }
+                    is UIResult.Success -> {
+                        showMessageInSnackbar(getString(R.string.public_link_add_correctly))
+                        graphShareViewModel.getGraphShares()
+                        publicLinksViewModel.resetViewModel()
+                    }
+                    is UIResult.Error -> { }
+                }
+            }
+        }
+    }
+
+    private fun observeEditLinkResult() {
+        collectLatestLifecycleFlow(publicLinksViewModel.editLinkResultFlow) { event ->
+            event?.peekContent()?.let { uiResult ->
+                when (uiResult) {
+                    is UIResult.Loading -> { }
+                    is UIResult.Success -> {
+                        graphShareViewModel.getGraphShares()
+                        showMessageInSnackbar(getString(R.string.public_link_edit_correctly))
+                        publicLinksViewModel.resetViewModel()
+                    }
+                    is UIResult.Error -> {
+                        if (publicLinksViewModel.addPublicLinkUIState.value?.wasPasswordChanged == true) {
+                            graphShareViewModel.getGraphShares()
+                            showMessageInSnackbar(getString(R.string.public_link_edit_partially_failed))
+                            publicLinksViewModel.resetViewModel()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observeRemoveShareResult() {
+        collectLatestLifecycleFlow(graphShareViewModel.removeShareResultFlow) { uiResult ->
+            when (uiResult) {
+                is UIResult.Loading -> { }
+                is UIResult.Success -> {
+                    showMessageInSnackbar(getString(R.string.share_remove_correctly))
+                    graphShareViewModel.getGraphShares()
+                }
+                is UIResult.Error -> {
+                    showErrorInSnackbar(R.string.share_remove_failed, uiResult.error)
+                    Timber.e(uiResult.error, "Failed to remove a graph share")
+                }
+            }
+        }
+    }
+
+    private fun observeRemoveLinkResult() {
+        collectLatestLifecycleFlow(publicLinksViewModel.removeLinkResultFlow) { uiResult ->
+            when (uiResult) {
+                is UIResult.Loading -> { }
+                is UIResult.Success -> {
+                    showMessageInSnackbar(getString(R.string.public_link_remove_correctly))
+                    graphShareViewModel.getGraphShares()
+                }
+                is UIResult.Error -> {
+                    showErrorInSnackbar(R.string.public_link_remove_failed, uiResult.error)
+                    Timber.e(uiResult.error, "Failed to remove a public link")
+                }
+            }
+        }
+    }
+
+    private fun observeEditShareResult() {
+        collectLatestLifecycleFlow(graphShareViewModel.editShareResultFlow) { event ->
+            event?.peekContent()?.let { uiResult ->
+                when (uiResult) {
+                    is UIResult.Loading -> { }
+                    is UIResult.Success -> {
+                        showMessageInSnackbar(getString(R.string.share_edit_correctly))
+                        graphShareViewModel.getGraphShares()
+                        graphShareViewModel.resetViewModel()
+                    }
+                    is UIResult.Error -> { }
+                }
+            }
+        }
+    }
+
+    private fun showShares() {
+        val hasShares = shares.isNotEmpty()
+        binding.membersRecyclerView.isVisible = hasShares
+        binding.noSharesMessage.isVisible = !hasShares
+        graphSharesAdapter.setShares(shares, roles, canRemoveSharesAndLinks, canEditSharesAndLinks)
+    }
+
+    private fun showLinks() {
+        val hasLinks = links.isNotEmpty()
+        binding.publicLinksRecyclerView.isVisible = hasLinks
+        binding.noPublicLinksMessage.isVisible = !hasLinks
+        val formatter = SimpleDateFormat(DisplayUtils.DATE_FORMAT_ISO, Locale.ROOT).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        graphLinksAdapter.setPublicLinks(
+            publicLinks = links.sortedByDescending { link ->
+                if (link.createdDateTime.isNotEmpty()) {
+                    formatter.parse(link.createdDateTime)
+                } else {
+                    Date(0)
+                }
+            },
+            canRemoveLinks = canRemoveSharesAndLinks,
+            canEditLinks = canEditSharesAndLinks
+        )
+    }
+
+    override fun onCopyOrSendPublicLink(publicLinkUrl: String) {
+        val file = requireArguments().getParcelable<OCFile>(ARG_FILE)
+        listener?.copyOrSendPublicLink(publicLinkUrl, file?.fileName.orEmpty())
+    }
+
+    override fun onRemovePublicLink(publicLinkId: String, publicLinkDisplayName: String) {
+        AlertDialog.Builder(requireContext())
+            .setIcon(R.drawable.ic_warning)
+            .setTitle(getString(R.string.public_link_remove_dialog_title))
+            .setMessage(getString(R.string.public_link_remove_dialog_message, publicLinkDisplayName))
+            .setPositiveButton(getString(R.string.common_yes)) { _, _ -> publicLinksViewModel.removePublicLink(publicLinkId) }
+            .setNegativeButton(getString(R.string.common_no)) { dialog, _ -> dialog.dismiss() }
+            .show()
+            .avoidScreenshotsIfNeeded()
+    }
+
+    override fun onEditPublicLink(publicLink: OCLink) {
+        val file = requireArguments().getParcelable<OCFile>(ARG_FILE)
+        val accountName = requireArguments().getString(ARG_ACCOUNT_NAME)
+        if (file != null && accountName != null) {
+            publicLinksViewModel.resetViewModel()
+            listener?.addPublicLink(file = file, accountName = accountName, editMode = true, selectedPublicLink = publicLink)
+        }
+    }
+
+    interface GraphShareFragmentListener {
+        fun addGraphShare(file: OCFile, accountName: String, roles: List<OCRole>, editMode: Boolean, selectedShare: MemberPermission?)
+        fun addPublicLink(file: OCFile, accountName: String, editMode: Boolean, selectedPublicLink: OCLink?)
+        fun copyOrSendPublicLink(publicLinkUrl: String, fileName: String)
+    }
+
+    companion object {
+        private const val ARG_FILE = "FILE"
+        private const val ARG_ACCOUNT_NAME = "ACCOUNT_NAME"
+        private const val DRIVES_DELETE_PERMISSION = "libre.graph/driveItem/permissions/delete"
+        private const val DRIVES_UPDATE_PERMISSION = "libre.graph/driveItem/permissions/update"
+        private const val DRIVES_CREATE_PERMISSION = "libre.graph/driveItem/permissions/create"
+
+        fun newInstance(file: OCFile, accountName: String): GraphShareFragment {
+            val args = Bundle().apply {
+                putParcelable(ARG_FILE, file)
+                putString(ARG_ACCOUNT_NAME, accountName)
+            }
+            return GraphShareFragment().apply {
+                arguments = args
+            }
+        }
+    }
+}
